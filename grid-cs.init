@@ -1,0 +1,29 @@
+#!/bin/sh /etc/rc.common
+# maintainer: Qige Zhao
+# updated on: 2017.03.23
+
+START=99
+STOP=99
+
+APP=grid-cs
+CONF=/etc/config/$APP
+CMD=/usr/sbin/$APP
+CS_SIGNAL=/tmp/.grid_cs_signal
+CS_CACHE=/tmp/.grid_cs_cache
+
+start() {
+	if [ -f "$CONF" ]; then
+		echo "* loading config from file"
+	else
+		echo "* default settings (no conf file)"
+	fi
+
+	$CMD > "$CS_CACHE" 2>&1 &
+}
+
+stop() {
+	echo -n "exit" > "$CS_SIGNAL"
+	sleep 1
+	killall $APP
+	cat "$CS_SIGNAL"
+}
