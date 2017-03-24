@@ -1,0 +1,4 @@
+#!/usr/bin/lua
+
+local cs = require "cs.Scanner"
+cs.Run()
