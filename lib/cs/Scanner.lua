@@ -6,13 +6,17 @@
 -- clean chscan trigger
 -- set region, channel, rxagc, rxgain
 
--- by Qige @ 2017.03.22
+-- by Qige @ 2017.03.24
 
 local fmt = require 'six.fmt'
 local cmd = require 'six.cmd'
+local file = require 'six.file'
 local abb = require 'kpi.ABB'
 local gws = require 'kpi.GWS'
 
+local _echo = fmt.echo
+local _read = file.read
+local _save = file.write
 
 local SScan = {}
 
@@ -26,7 +30,8 @@ SScan.conf._trigger = '/sys/kernel/debug/ieee80211/phy0/ath9k/chanscan'
 SScan.conf._start = 'echo "scan enable" > %s; gws5001app setrxagc 0; sleep 1; gws5001app setrxgain 0\n'
 SScan.conf._stop = 'echo "scan disable" > %s; sleep 1; gws5001app setrxagc 1\n'
 
-SScan.conf._result = '/tmp/.grid_lite_chscan'
+SScan.conf._SIGNAL = '/tmp/.grid_cs_signal'
+SScan.conf._result = '/tmp/.grid_cs_cache'
 SScan.conf._clean = 'echo -n "" > %s\n'
 SScan.conf._scan = 'gws -C %d; sleep 2\n'
 SScan.conf._scan_item = '%d,%d,%d,%d,%d'
@@ -41,9 +46,9 @@ function SScan.load()
     local _abb = abb.RAW()
     local _gws = gws.RAW()
     if (_gws and _gws.rgn ~= nil) then
-        SScan.current.rgn = _gws.rgn
-        SScan.current.ch = _gws.ch
-        SScan.current.agc = _gws.agc
+        SScan.current.rgn = fmt.n(_gws.rgn)
+        SScan.current.ch = fmt.n(_gws.ch)
+        SScan.current.agc = fmt.n(_gws.agc)
     end
 end
 
@@ -51,20 +56,20 @@ function SScan.restore()
     local current = SScan.current
     if (current.rgn > -1) then
         if (current.rgn > 0) then
-            GWS.ops.Set('rgn', 1)
+            gws.Save('rgn', 1)
         else
-            GWS.ops.Set('rgn', 0)
+            gws.Save('rgn', 0)
         end
     end
     if (current.agc > -1) then
         if (current.rgn > 0) then
-            GWS.ops.Set('agc', 1)
+            gws.Save('agc', 1)
         else
-            GWS.ops.Set('agc', 0)
+            gws.Save('agc', 0)
         end
     end
     if (current.ch >= SScan.conf.r0ch_min) then
-        GWS.ops.Set('ch', current.ch)
+        gws.Save('ch', current.ch)
     end
 end
 
@@ -80,6 +85,8 @@ function SScan.init()
     _fmt = SScan.conf._clean
     _cmd = string.format(_fmt, _f)
     cmd.exec(_cmd)
+
+    SScan.flag.set('azure agent up.\n')
 end
 
 function SScan.stop()
@@ -87,6 +94,8 @@ function SScan.stop()
     local _f = SScan.conf._trigger
     local _cmd = string.format(_fmt, _f)
     cmd.exec(_cmd)
+
+    SScan.flag.set('azure agent down.\n')
 end
 
 function SScan.Run(rgn, b, e)
@@ -107,27 +116,49 @@ function SScan.Run(rgn, b, e)
     local _fmt_scan_item = SScan.conf._scan_item
     local _fmt_save = SScan.conf._save
     local _ts, i
-    
+   
     for i = _ch, _ech do
-        if (_rgn > 0) then
-            _freq = 474+8*(i-21)
-        else
-            _freq = 473+6*(i-14)
-        end
-        _noise = abb.raw.Noise()
-        _ts = os.time()
+        -- check if allow to continue
+        if (SScan.flag._SIGNAL()) then
+            if (_rgn > 0) then
+                _freq = 474+8*(i-21)
+            else
+                _freq = 473+6*(i-14)
+            end
+            _noise = abb.raw.Noise()
+            _ts = os.time()
 
-        _cmd = string.format(_fmt_scan, i)
-        cmd.exec(_cmd)
-        
-        _item = string.format(_fmt_scan_item, _rgn, i, _freq, _noise, _ts)
-        io.write(_item .. '\n')
-        _cmd = string.format(_fmt_save, _item, _f)
-        cmd.exec(_cmd)
+            _cmd = string.format(_fmt_scan, i)
+            cmd.exec(_cmd)
+            
+            _item = string.format(_fmt_scan_item, _rgn, i, _freq, _noise, _ts)
+            io.write(_item .. '\n')
+            _cmd = string.format(_fmt_save, _item, _f)
+            cmd.exec(_cmd)
+        else
+            break
+        end
     end
 
     SScan.stop()
-    --SScan.restore()
+    SScan.restore()
+end
+
+SScan.flag = {}
+function SScan.flag._SIGNAL()
+    local f = SScan.conf._SIGNAL
+    local sig = _read(f)
+    if (sig == 'exit' or sig == 'down' or sig == 'quit') then
+        _echo('(warning) QUIT signal detected.\n')
+        return false
+    else
+        return true
+    end
+end
+
+function SScan.flag.set(msg)
+    local f = SScan.conf._SIGNAL
+    _save(f, msg)
 end
 
 return SScan

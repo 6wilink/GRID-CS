@@ -1,6 +1,6 @@
 #!/bin/sh /etc/rc.common
 # maintainer: Qige Zhao
-# updated on: 2017.03.23
+# updated on: 2017.03.24
 
 START=99
 STOP=99
@@ -9,7 +9,7 @@ APP=grid-cs
 CONF=/etc/config/$APP
 CMD=/usr/sbin/$APP
 CS_SIGNAL=/tmp/.grid_cs_signal
-CS_CACHE=/tmp/.grid_cs_cache
+CS_CACHE=/dev/null
 
 start() {
 	if [ -f "$CONF" ]; then
