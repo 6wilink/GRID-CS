@@ -23,7 +23,7 @@ start() {
 
 stop() {
 	echo -n "exit" > "$CS_SIGNAL"
-	sleep 1
+	sleep 2
 	killall $APP
 	cat "$CS_SIGNAL"
 }
